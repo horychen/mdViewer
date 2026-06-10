@@ -479,12 +479,18 @@ function App() {
       unlisteners.push(handler);
     });
 
+    void listen("menu-close-tab", () => {
+      closeCurrentTab();
+    }).then((handler) => {
+      unlisteners.push(handler);
+    });
+
     return () => {
       for (const unlisten of unlisteners) {
         unlisten();
       }
     };
-  }, [openFile, reloadFile]);
+  }, [openFile, reloadFile, closeCurrentTab]);
 
   const resolveMarkdownAsset = useCallback(
     (src: string | undefined) => {

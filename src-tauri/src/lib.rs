@@ -6,6 +6,7 @@ use tauri::{DragDropEvent, Emitter, Manager};
 type PendingOpenedFiles = Mutex<Vec<String>>;
 const MENU_OPEN_FILE_ID: &str = "open-file";
 const MENU_RELOAD_FILE_ID: &str = "reload-file";
+const MENU_CLOSE_TAB_ID: &str = "close-tab";
 
 #[derive(Debug, Serialize)]
 struct MarkdownFile {
@@ -110,8 +111,14 @@ pub fn run() {
                                 true,
                                 Some("CmdOrCtrl+R"),
                             )?,
+                            &MenuItem::with_id(
+                                app_handle,
+                                MENU_CLOSE_TAB_ID,
+                                "Close Tab",
+                                true,
+                                Some("CmdOrCtrl+W"),
+                            )?,
                             &PredefinedMenuItem::separator(app_handle)?,
-                            &PredefinedMenuItem::close_window(app_handle, None)?,
                             #[cfg(not(target_os = "macos"))]
                             &PredefinedMenuItem::quit(app_handle, None)?,
                         ],
@@ -144,9 +151,6 @@ pub fn run() {
                         &[
                             &PredefinedMenuItem::minimize(app_handle, None)?,
                             &PredefinedMenuItem::maximize(app_handle, None)?,
-                            #[cfg(target_os = "macos")]
-                            &PredefinedMenuItem::separator(app_handle)?,
-                            &PredefinedMenuItem::close_window(app_handle, None)?,
                         ],
                     )?,
                     &Submenu::with_items(app_handle, "Help", true, &[])?,
@@ -160,6 +164,10 @@ pub fn run() {
 
             if event.id() == MENU_RELOAD_FILE_ID {
                 let _ = app_handle.emit("menu-reload-file", ());
+            }
+
+            if event.id() == MENU_CLOSE_TAB_ID {
+                let _ = app_handle.emit("menu-close-tab", ());
             }
         })
         .on_window_event(|window, event| {
