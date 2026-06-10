@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="176" y1="116" x2="848" y2="908" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#315f59"/>
+      <stop offset="1" stop-color="#132c2a"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="274" y1="178" x2="774" y2="846" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fffdf5"/>
+      <stop offset="1" stop-color="#e9ebe2"/>
+    </linearGradient>
+    <linearGradient id="fold" x1="650" y1="186" x2="802" y2="340" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f6f3e8"/>
+      <stop offset="1" stop-color="#cfd7cf"/>
+    </linearGradient>
+    <filter id="soft-shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#071514" flood-opacity="0.35"/>
+    </filter>
+    <filter id="inner-paper" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="1" flood-color="#ffffff" flood-opacity="0.7"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" rx="224" fill="url(#bg)"/>
+  <path d="M170 640C258 798 430 888 610 854C744 829 852 738 898 612C864 786 708 918 520 918C330 918 174 786 138 610C148 620 158 630 170 640Z" fill="#0b1f1e" opacity="0.16"/>
+
+  <g filter="url(#soft-shadow)">
+    <path d="M264 164H650L792 306V820C792 854 764 882 730 882H264C230 882 202 854 202 820V226C202 192 230 164 264 164Z" fill="url(#paper)"/>
+    <path d="M650 164V282C650 295 661 306 674 306H792L650 164Z" fill="url(#fold)"/>
+    <path d="M650 164V282C650 295 661 306 674 306H792" fill="none" stroke="#b7c4bb" stroke-width="8" stroke-linejoin="round" opacity="0.8"/>
+  </g>
+
+  <g filter="url(#inner-paper)">
+    <path d="M302 376H624" stroke="#233c39" stroke-width="42" stroke-linecap="round"/>
+    <path d="M302 474H690" stroke="#8d9990" stroke-width="28" stroke-linecap="round" opacity="0.82"/>
+    <path d="M302 548H628" stroke="#aab2aa" stroke-width="28" stroke-linecap="round" opacity="0.72"/>
+    <path d="M302 622H580" stroke="#aab2aa" stroke-width="28" stroke-linecap="round" opacity="0.72"/>
+  </g>
+
+  <g transform="translate(300 690)">
+    <rect x="0" y="0" width="426" height="92" rx="32" fill="#244f49"/>
+    <path d="M68 29L118 73L168 29" fill="none" stroke="#f7f3e7" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M226 30V70" stroke="#f7f3e7" stroke-width="26" stroke-linecap="round"/>
+    <path d="M226 70L184 34" stroke="#f7f3e7" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M226 70L268 34" stroke="#f7f3e7" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M322 30V70H362C382 70 396 53 396 35C396 17 382 0 362 0H322V30Z" transform="translate(-4 14)" fill="#f7f3e7"/>
+  </g>
+</svg>
