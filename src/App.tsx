@@ -207,8 +207,8 @@ function App() {
       ? openFiles[activeFileIndex]
       : null;
 
-  // Show tab bar when there is at least one file open
-  const showTabBar = openFiles.length >= 1;
+  // Show tab bar only when 2+ files are open
+  const showTabBar = openFiles.length >= 2;
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
