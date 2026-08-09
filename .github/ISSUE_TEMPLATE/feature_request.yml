@@ -1,0 +1,32 @@
+name: Feature request
+description: Suggest something mdViewer should do.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: >
+        Describe the reading situation that is awkward today, not just the
+        feature you have in mind. Knowing the underlying problem often surfaces
+        a simpler fix.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like to see
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      description: >
+        mdViewer is deliberately a reader. Editing, syncing, note management,
+        and accounts are out of scope.
+      options:
+        - label: This is a reading feature, not an editing or sync feature.
+          required: true

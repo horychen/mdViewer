@@ -138,7 +138,11 @@ pub fn run() {
                 name: Some(pkg_info.name.clone()),
                 version: Some(pkg_info.version.to_string()),
                 copyright: config.bundle.copyright.clone(),
-                authors: config.bundle.publisher.clone().map(|publisher| vec![publisher]),
+                authors: config
+                    .bundle
+                    .publisher
+                    .clone()
+                    .map(|publisher| vec![publisher]),
                 ..Default::default()
             };
 
@@ -165,11 +169,7 @@ pub fn run() {
                         pkg_info.name.clone(),
                         true,
                         &[
-                            &PredefinedMenuItem::about(
-                                app_handle,
-                                None,
-                                Some(about_metadata),
-                            )?,
+                            &PredefinedMenuItem::about(app_handle, None, Some(about_metadata))?,
                             &PredefinedMenuItem::separator(app_handle)?,
                             &PredefinedMenuItem::services(app_handle, None)?,
                             &PredefinedMenuItem::separator(app_handle)?,
@@ -267,27 +267,25 @@ pub fn run() {
             }
         })
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::DragDrop(drag_event) = event {
-                if let DragDropEvent::Drop { paths, .. } = drag_event {
-                    let markdown_paths: Vec<String> = paths
-                        .into_iter()
-                        .filter_map(|p| p.to_str().map(|s| s.to_string()))
-                        .filter(|s| {
-                            let lower = s.to_lowercase();
-                            lower.ends_with(".md")
-                                || lower.ends_with(".markdown")
-                                || lower.ends_with(".mdown")
-                                || lower.ends_with(".mkd")
-                                || lower.ends_with(".txt")
-                        })
-                        .collect();
+            if let tauri::WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) = event {
+                let markdown_paths: Vec<String> = paths
+                    .iter()
+                    .filter_map(|p| p.to_str().map(|s| s.to_string()))
+                    .filter(|s| {
+                        let lower = s.to_lowercase();
+                        lower.ends_with(".md")
+                            || lower.ends_with(".markdown")
+                            || lower.ends_with(".mdown")
+                            || lower.ends_with(".mkd")
+                            || lower.ends_with(".txt")
+                    })
+                    .collect();
 
-                    if !markdown_paths.is_empty() {
-                        if let Ok(mut pending) = window.state::<PendingOpenedFiles>().lock() {
-                            pending.extend(markdown_paths.clone());
-                        }
-                        let _ = window.emit("open-markdown-files", markdown_paths);
+                if !markdown_paths.is_empty() {
+                    if let Ok(mut pending) = window.state::<PendingOpenedFiles>().lock() {
+                        pending.extend(markdown_paths.clone());
                     }
+                    let _ = window.emit("open-markdown-files", markdown_paths);
                 }
             }
         })

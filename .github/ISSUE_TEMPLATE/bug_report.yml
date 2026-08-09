@@ -1,0 +1,48 @@
+name: Bug report
+description: Something renders wrong, crashes, or does not behave as documented.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Markdown that reproduces it
+      description: >
+        The smallest snippet that shows the problem. This matters most for math
+        and image issues — paste the raw Markdown source, not a screenshot of
+        the rendered output, so the exact delimiters and escapes survive.
+      render: markdown
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: mdViewer version
+      description: See mdViewer > About mdViewer.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: "15.2"
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Screenshots, console output, or context that might help.
+    validations:
+      required: false
