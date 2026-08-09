@@ -40,7 +40,13 @@ export function Mermaid({ code, theme }: MermaidProps) {
           startOnLoad: false,
           theme: theme === "dark" ? "dark" : "default",
           securityLevel: "strict",
-          fontFamily: "inherit",
+          // No `fontFamily: "inherit"` here. Mermaid sizes each node by
+          // measuring its label, and it can only measure a real font — given
+          // `inherit` it measures in its default face while the SVG renders in
+          // whatever the page cascade supplies, so every label overflows the
+          // box drawn for it. The paired rule in App.css keeps the reading
+          // area's font size from leaking in for the same reason.
+          fontSize: 16,
         });
 
         diagramCount += 1;
