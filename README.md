@@ -3,6 +3,13 @@
 A lightweight macOS Markdown reader built with Tauri v2, React, TypeScript, and
 Rust. It opens a file and gets out of the way — no editing, no sync, no account.
 
+<p align="center">
+  <img
+    src="docs/screenshot.png"
+    alt="mdViewer showing a technical document: inline math sits on the text baseline inside CJK paragraphs, and display equations, fractions, and a stacked matrix are centred in their own blocks."
+    width="820">
+</p>
+
 ## Features
 
 ### LaTeX math
