@@ -1,8 +1,10 @@
 import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { homeDir } from "@tauri-apps/api/path";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
+  Clock,
   Code2,
   Columns2,
   Eye,
@@ -20,9 +22,22 @@ import hljs from "highlight.js/lib/core";
 import markdown from "highlight.js/lib/languages/markdown";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
+import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import { normalizeTexDelimiters } from "./markdown/normalizeTexDelimiters";
+import { remarkGuardInlineMath } from "./markdown/remarkGuardInlineMath";
+import {
+  type RecentFile,
+  addRecentFile,
+  loadRecentFiles,
+  removeRecentFile,
+  saveRecentFiles,
+  shortenPath,
+} from "./recentFiles";
 import "github-markdown-css/github-markdown.css";
 import "highlight.js/styles/github.css";
+import "katex/dist/katex.min.css";
 import "./App.css";
 
 type MarkdownFile = {
@@ -53,6 +68,15 @@ const MARKDOWN_FILTERS = [
 const URL_SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
 
 hljs.registerLanguage("markdown", markdown);
+
+const REMARK_PLUGINS = [remarkGfm, remarkMath, remarkGuardInlineMath];
+
+// A malformed formula shows up in red in place, rather than taking the whole
+// document down with it.
+const REHYPE_PLUGINS = [
+  rehypeHighlight,
+  [rehypeKatex, { throwOnError: false, errorColor: "#d1383d" }],
+] as const;
 
 const READER_THEMES: { id: ReaderTheme; label: string }[] = [
   { id: "lopash", label: "Lopash" },
@@ -200,6 +224,8 @@ function App() {
   const [readerZoom, setReaderZoom] = useState(getInitialReaderZoom);
   const [status, setStatus] = useState("Open a Markdown file to start reading.");
   const [isLoading, setIsLoading] = useState(false);
+  const [recentFiles, setRecentFiles] = useState<RecentFile[]>(loadRecentFiles);
+  const [homePath, setHomePath] = useState<string | null>(null);
 
   // Derived current file
   const currentFile =
@@ -233,6 +259,21 @@ function App() {
     window.localStorage.setItem("mdview.readerZoom", String(readerZoom));
   }, [readerZoom]);
 
+  useEffect(() => {
+    saveRecentFiles(recentFiles);
+    // Keep the native File > Open Recent submenu in step with the stored list.
+    void invoke("set_recent_files", {
+      entries: recentFiles.map(({ path, name }) => ({ path, name })),
+    }).catch(() => undefined);
+  }, [recentFiles]);
+
+  useEffect(() => {
+    // Used only to shorten displayed paths, so failure is not worth surfacing.
+    void homeDir()
+      .then((path) => setHomePath(path.replace(/\/$/, "")))
+      .catch(() => setHomePath(null));
+  }, []);
+
   const loadFile = useCallback(async (path: string) => {
     setIsLoading(true);
     setStatus("Loading...");
@@ -243,24 +284,33 @@ function App() {
       if (existingIndex >= 0) {
         setActiveFileIndex(existingIndex);
         setStatus(`Switched to ${openFiles[existingIndex].name}`);
-        document.title = `${openFiles[existingIndex].name} - mdview`;
+        document.title = `${openFiles[existingIndex].name} - mdViewer`;
         setIsLoading(false);
         return;
       }
 
       const file = await invoke<MarkdownFile>("read_markdown_file", { path });
+      setRecentFiles((previous) =>
+        addRecentFile(previous, {
+          path: file.path,
+          name: file.name,
+          dir: file.dir,
+        }),
+      );
       setOpenFiles((previous) => {
         const newFiles = [...previous, file];
         // Set active index to the new file
         const newIndex = newFiles.length - 1;
         setActiveFileIndex(newIndex);
         setStatus(`Loaded ${file.name}`);
-        document.title = `${file.name} - mdview`;
+        document.title = `${file.name} - mdViewer`;
         return newFiles;
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setStatus(message);
+      // A path that no longer reads is dead weight in the recent list.
+      setRecentFiles((previous) => removeRecentFile(previous, path));
     } finally {
       setIsLoading(false);
     }
@@ -285,7 +335,7 @@ function App() {
         if (newFiles.length === 0) {
           setActiveFileIndex(-1);
           setStatus("Open a Markdown file to start reading.");
-          document.title = "mdview";
+          document.title = "mdViewer";
           return newFiles;
         }
 
@@ -295,7 +345,7 @@ function App() {
           const newActiveIndex = Math.min(index, newFiles.length - 1);
           setActiveFileIndex(newActiveIndex);
           setStatus(`Loaded ${newFiles[newActiveIndex].name}`);
-          document.title = `${newFiles[newActiveIndex].name} - mdview`;
+          document.title = `${newFiles[newActiveIndex].name} - mdViewer`;
         } else if (index < activeFileIndex) {
           // Closed a tab before the active one, shift index down
           setActiveFileIndex(activeFileIndex - 1);
@@ -311,7 +361,7 @@ function App() {
       if (index >= 0 && index < openFiles.length) {
         setActiveFileIndex(index);
         setStatus(`Loaded ${openFiles[index].name}`);
-        document.title = `${openFiles[index].name} - mdview`;
+        document.title = `${openFiles[index].name} - mdViewer`;
       }
     },
     [openFiles],
@@ -485,6 +535,12 @@ function App() {
       unlisteners.push(handler);
     });
 
+    void listen("menu-clear-recent-files", () => {
+      setRecentFiles([]);
+    }).then((handler) => {
+      unlisteners.push(handler);
+    });
+
     return () => {
       for (const unlisten of unlisteners) {
         unlisten();
@@ -520,6 +576,13 @@ function App() {
 
     return `${lines.toLocaleString()} lines`;
   }, [currentFile]);
+
+  // Only the preview is normalized; the source view still shows the file as it
+  // was written on disk.
+  const previewSource = useMemo(
+    () => (currentFile ? normalizeTexDelimiters(currentFile.content) : ""),
+    [currentFile],
+  );
 
   const highlightedSource = useMemo(() => {
     if (!currentFile) {
@@ -744,8 +807,8 @@ function App() {
               <section className="preview-panel" aria-label="Markdown preview">
                 <article className="markdown-body">
                   <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    rehypePlugins={[rehypeHighlight]}
+                    remarkPlugins={REMARK_PLUGINS}
+                    rehypePlugins={REHYPE_PLUGINS as never}
                     components={{
                       img({ alt, src, ...props }) {
                         return (
@@ -759,7 +822,7 @@ function App() {
                       },
                     }}
                   >
-                    {currentFile.content}
+                    {previewSource}
                   </ReactMarkdown>
                 </article>
               </section>
@@ -769,6 +832,38 @@ function App() {
           <section className="empty-state" aria-label="No document open">
             <FileText size={32} strokeWidth={1.6} aria-hidden="true" />
             <p>Use File &gt; Open... or Command+O to start reading.</p>
+
+            {recentFiles.length ? (
+              <nav className="recent-files" aria-label="Recent files">
+                <div className="recent-files-header">
+                  <Clock size={14} strokeWidth={1.9} aria-hidden="true" />
+                  <span>Recent</span>
+                  <button
+                    className="recent-files-clear"
+                    type="button"
+                    onClick={() => setRecentFiles([])}
+                  >
+                    Clear
+                  </button>
+                </div>
+                <ul>
+                  {recentFiles.map((file) => (
+                    <li key={file.path}>
+                      <button
+                        title={file.path}
+                        type="button"
+                        onClick={() => void loadFile(file.path)}
+                      >
+                        <span className="recent-files-name">{file.name}</span>
+                        <span className="recent-files-dir">
+                          {shortenPath(file.dir, homePath)}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </nav>
+            ) : null}
           </section>
         )}
       </main>

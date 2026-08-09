@@ -1285,6 +1285,85 @@ button:focus-visible,
   padding: 0 13px;
 }
 
+.recent-files {
+  width: min(420px, 100%);
+  margin-top: 10px;
+  text-align: left;
+}
+
+.recent-files-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 6px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.recent-files-clear {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+
+.recent-files-clear:hover {
+  color: var(--text);
+}
+
+.recent-files ul {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recent-files li button {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.recent-files li button:hover {
+  background: var(--surface-muted);
+}
+
+.recent-files-name {
+  flex: 0 1 auto;
+  font-size: 0.92rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recent-files-dir {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  /* Long paths matter most at their tail, so clip the front. */
+  direction: rtl;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+}
+
 .status-bar {
   display: flex;
   align-items: center;
@@ -1418,4 +1497,26 @@ button:focus-visible,
   .source-theme-picker select {
     max-width: 124px;
   }
+}
+
+/* --- Math (KaTeX) --- */
+
+.markdown-body .katex {
+  /* KaTeX ships at 1.21em, which towers over the reading themes' body text. */
+  font-size: 1.06em;
+}
+
+.markdown-body .katex-display {
+  /* Long formulas scroll on their own instead of widening the whole page. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 1.1em 0;
+  padding: 0.4em 0;
+}
+
+.markdown-body .katex-error {
+  font-family:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
 }

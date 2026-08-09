@@ -1,12 +1,21 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf, sync::Mutex};
 use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{DragDropEvent, Emitter, Manager};
 
 type PendingOpenedFiles = Mutex<Vec<String>>;
+
+/// Handle to the "Open Recent" submenu so its contents can be replaced while
+/// the app runs. The frontend owns the actual list and pushes it down here.
+type RecentFilesMenu = Mutex<Option<Submenu<tauri::Wry>>>;
+
 const MENU_OPEN_FILE_ID: &str = "open-file";
 const MENU_RELOAD_FILE_ID: &str = "reload-file";
 const MENU_CLOSE_TAB_ID: &str = "close-tab";
+const MENU_RECENT_EMPTY_ID: &str = "recent-files-empty";
+const MENU_CLEAR_RECENT_ID: &str = "clear-recent-files";
+/// Each recent entry carries its path in the menu id, so no side table is needed.
+const MENU_RECENT_PREFIX: &str = "recent-file:";
 
 #[derive(Debug, Serialize)]
 struct MarkdownFile {
@@ -52,6 +61,70 @@ fn take_pending_opened_files(state: tauri::State<'_, PendingOpenedFiles>) -> Vec
     std::mem::take(&mut *pending)
 }
 
+#[derive(Debug, Deserialize)]
+struct RecentEntry {
+    path: String,
+    name: String,
+}
+
+fn rebuild_recent_menu(
+    app_handle: &tauri::AppHandle,
+    submenu: &Submenu<tauri::Wry>,
+    entries: &[RecentEntry],
+) {
+    while matches!(submenu.remove_at(0), Ok(Some(_))) {}
+
+    if entries.is_empty() {
+        if let Ok(placeholder) = MenuItem::with_id(
+            app_handle,
+            MENU_RECENT_EMPTY_ID,
+            "No Recent Files",
+            false,
+            None::<&str>,
+        ) {
+            let _ = submenu.append(&placeholder);
+        }
+        return;
+    }
+
+    for entry in entries {
+        let id = format!("{MENU_RECENT_PREFIX}{}", entry.path);
+        if let Ok(item) = MenuItem::with_id(app_handle, id, &entry.name, true, None::<&str>) {
+            let _ = submenu.append(&item);
+        }
+    }
+
+    if let (Ok(separator), Ok(clear)) = (
+        PredefinedMenuItem::separator(app_handle),
+        MenuItem::with_id(
+            app_handle,
+            MENU_CLEAR_RECENT_ID,
+            "Clear Menu",
+            true,
+            None::<&str>,
+        ),
+    ) {
+        let _ = submenu.append(&separator);
+        let _ = submenu.append(&clear);
+    }
+}
+
+/// Mirrors the frontend's recent-file list into the native menu. Menu mutation
+/// has to happen on the main thread on macOS.
+#[tauri::command]
+fn set_recent_files(app_handle: tauri::AppHandle, entries: Vec<RecentEntry>) {
+    let handle = app_handle.clone();
+
+    let _ = app_handle.run_on_main_thread(move || {
+        let state = handle.state::<RecentFilesMenu>();
+        let guard = state.lock().expect("recent files menu lock poisoned");
+
+        if let Some(submenu) = guard.as_ref() {
+            rebuild_recent_menu(&handle, submenu, &entries);
+        }
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
@@ -68,6 +141,20 @@ pub fn run() {
                 authors: config.bundle.publisher.clone().map(|publisher| vec![publisher]),
                 ..Default::default()
             };
+
+            let recent_submenu = Submenu::with_items(
+                app_handle,
+                "Open Recent",
+                true,
+                &[&MenuItem::with_id(
+                    app_handle,
+                    MENU_RECENT_EMPTY_ID,
+                    "No Recent Files",
+                    false,
+                    None::<&str>,
+                )?],
+            )?;
+            app_handle.manage::<RecentFilesMenu>(Mutex::new(Some(recent_submenu.clone())));
 
             Menu::with_items(
                 app_handle,
@@ -104,6 +191,7 @@ pub fn run() {
                                 true,
                                 Some("CmdOrCtrl+O"),
                             )?,
+                            &recent_submenu,
                             &MenuItem::with_id(
                                 app_handle,
                                 MENU_RELOAD_FILE_ID,
@@ -169,6 +257,14 @@ pub fn run() {
             if event.id() == MENU_CLOSE_TAB_ID {
                 let _ = app_handle.emit("menu-close-tab", ());
             }
+
+            if event.id() == MENU_CLEAR_RECENT_ID {
+                let _ = app_handle.emit("menu-clear-recent-files", ());
+            }
+
+            if let Some(path) = event.id().0.strip_prefix(MENU_RECENT_PREFIX) {
+                let _ = app_handle.emit("open-markdown-files", vec![path.to_string()]);
+            }
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::DragDrop(drag_event) = event {
@@ -197,7 +293,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             read_markdown_file,
-            take_pending_opened_files
+            take_pending_opened_files,
+            set_recent_files
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
