@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "mdViewer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "com.horyc.mdview",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -23,16 +23,27 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": ["$HOME/**", "/Volumes/**"]
+        "scope": [
+          "$HOME/**",
+          "/Volumes/**"
+        ]
       }
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg"],
+    "targets": [
+      "app",
+      "dmg"
+    ],
     "fileAssociations": [
       {
-        "ext": ["md", "markdown", "mdown", "mkd"],
+        "ext": [
+          "md",
+          "markdown",
+          "mdown",
+          "mkd"
+        ],
         "name": "Markdown Document",
         "description": "Markdown document",
         "role": "Viewer",
