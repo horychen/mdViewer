@@ -25,6 +25,7 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
+import { Mermaid } from "./Mermaid";
 import { normalizeTexDelimiters } from "./markdown/normalizeTexDelimiters";
 import { remarkGuardInlineMath } from "./markdown/remarkGuardInlineMath";
 import {
@@ -36,7 +37,8 @@ import {
   shortenPath,
 } from "./recentFiles";
 import "github-markdown-css/github-markdown.css";
-import "highlight.js/styles/github.css";
+// No highlight.js stylesheet: its colours are fixed, and the source-theme
+// variables in App.css drive both the source pane and the preview instead.
 import "katex/dist/katex.min.css";
 import "./App.css";
 
@@ -810,6 +812,24 @@ function App() {
                     remarkPlugins={REMARK_PLUGINS}
                     rehypePlugins={REHYPE_PLUGINS as never}
                     components={{
+                      code({ className, children, ...props }) {
+                        // Mermaid arrives as a fenced block; everything else
+                        // stays on the normal highlighted-code path.
+                        if (/\blanguage-mermaid\b/.test(className ?? "")) {
+                          return (
+                            <Mermaid
+                              code={String(children).replace(/\n$/, "")}
+                              theme={theme}
+                            />
+                          );
+                        }
+
+                        return (
+                          <code className={className} {...props}>
+                            {children}
+                          </code>
+                        );
+                      },
                       img({ alt, src, ...props }) {
                         return (
                           <img
