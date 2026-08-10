@@ -1560,6 +1560,12 @@ button:focus-visible,
   font-size: 16px;
   font-family:
     "trebuchet ms", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  /* Diagrams still follow the reader's zoom, but as magnification rather than
+     as a larger font: `zoom` scales the finished box uniformly and takes part
+     in layout, where `transform: scale` would leave the old box behind and let
+     the next paragraph overlap. Nothing inside the SVG is laid out again, so
+     the labels cannot start overflowing again either. */
+  zoom: var(--reader-zoom);
 }
 
 .mermaid-canvas svg {
