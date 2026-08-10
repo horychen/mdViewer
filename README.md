@@ -96,6 +96,24 @@ cd src-tauri && cargo check
 - `sample.md` — tables, task lists, code blocks, and a relative local image.
 - `sample-math.md` — every math case above, including the ones that must *not*
   render as math.
+- `sample-mermaid.md` — flowchart, sequence, and state diagrams, plus a broken
+  one to show what failure looks like.
+
+## In the terminal instead
+
+[**mdTerminal**](https://github.com/horychen/mdTerminal) is the sibling of this
+project: the same documents — maths, images, and Mermaid diagrams all rendered
+— read in a terminal rather than a window.
+
+```sh
+npm i -g @horychen/mdterminal
+mdterm notes.md
+```
+
+It needs a terminal that speaks the Kitty graphics protocol (Ghostty, Kitty,
+WezTerm). The two share their trickiest piece of logic: the rule that rewrites
+`\(...\)` before parsing, and the guard that keeps `$100 and $200` from being
+read as a formula.
 
 ## License
 
