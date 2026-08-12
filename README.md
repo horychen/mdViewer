@@ -1,7 +1,8 @@
 # mdViewer
 
-A lightweight macOS Markdown reader built with Tauri v2, React, TypeScript, and
-Rust. It opens a file and gets out of the way — no editing, no sync, no account.
+A lightweight macOS Markdown reader and editor built with Tauri v2, React,
+TypeScript, and Rust. It opens a file, shows it properly, and lets you change
+it — no sync, no account, no note library. Your files stay where you put them.
 
 <p align="center">
   <img
@@ -52,21 +53,43 @@ Open `sample-math.md` to see all of the above at once.
 - Tabs, with drag-and-drop to open files.
 - Recent files, both in the empty-state list and under `File > Open Recent`.
   Entries that no longer resolve are dropped automatically.
-- Preview-only by default; source-only and split source/preview also available.
+- Preview-only by default; editor-only and split editor/preview also available.
 - Switchable reading themes and syntax-highlight themes.
 - Zoom the reading area without resizing the toolbar.
 - Light/dark theme toggle.
+
+## Editing
+
+`Command+2` puts the editor beside the preview; `Command+3` gives it the whole
+window. Both use CodeMirror, with Markdown highlighting and the same five
+palettes the preview's code blocks use, so the editor is not a sixth colour
+scheme that agrees with none of the others.
+
+Typing updates the document immediately and the preview follows a fifth of a
+second later. Relaying every formula in a file on each keystroke is the
+expensive half, and waiting for a pause is what keeps typing from stuttering.
+
+**Saving is explicit.** `Command+S` writes the file; until then a dot marks the
+tab and the status bar says so, and closing a tab, reloading, or quitting asks
+before discarding anything. Notes can autosave because it owns its storage and
+its history — mdViewer edits the real file in your Finder, quite possibly inside
+a synced folder, where every stray keystroke would propagate immediately.
+
+The write itself goes to a temporary file and is renamed over the original,
+which is atomic within a filesystem: an interruption leaves the previous version
+intact rather than half a document.
 
 ## Shortcuts
 
 | Key | Action |
 | --- | --- |
 | `Command+O` | Open a file |
+| `Command+S` | Save |
 | `Command+R` | Reload the current file |
 | `Command+W` | Close the current tab |
 | `Command+1` | Preview only |
-| `Command+2` | Split source/preview |
-| `Command+3` | Source only |
+| `Command+2` | Split editor/preview |
+| `Command+3` | Editor only |
 | `Command+=` | Zoom in |
 | `Command+-` | Zoom out |
 | `Command+0` | Reset zoom |

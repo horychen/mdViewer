@@ -2,7 +2,8 @@ import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "r
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { homeDir } from "@tauri-apps/api/path";
-import { open } from "@tauri-apps/plugin-dialog";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { confirm, open } from "@tauri-apps/plugin-dialog";
 import {
   Clock,
   Code2,
@@ -18,13 +19,12 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import hljs from "highlight.js/lib/core";
-import markdown from "highlight.js/lib/languages/markdown";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
+import { Editor } from "./Editor";
 import { Mermaid } from "./Mermaid";
 import { normalizeTexDelimiters } from "./markdown/normalizeTexDelimiters";
 import { remarkGuardInlineMath } from "./markdown/remarkGuardInlineMath";
@@ -47,7 +47,12 @@ type MarkdownFile = {
   name: string;
   dir: string;
   content: string;
+  /** What is on disk, so edits can be compared against it. */
+  savedContent: string;
 };
+
+/** How long typing has to pause before the preview is rebuilt. */
+const PREVIEW_DEBOUNCE_MS = 200;
 
 type ReadingMode = "preview" | "source" | "split";
 type Theme = "light" | "dark";
@@ -68,8 +73,6 @@ const MARKDOWN_FILTERS = [
 ];
 
 const URL_SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
-
-hljs.registerLanguage("markdown", markdown);
 
 const REMARK_PLUGINS = [remarkGfm, remarkMath, remarkGuardInlineMath];
 
@@ -300,7 +303,7 @@ function App() {
         }),
       );
       setOpenFiles((previous) => {
-        const newFiles = [...previous, file];
+        const newFiles = [...previous, { ...file, savedContent: file.content }];
         // Set active index to the new file
         const newIndex = newFiles.length - 1;
         setActiveFileIndex(newIndex);
@@ -331,7 +334,20 @@ function App() {
   }, [loadFile]);
 
   const closeTab = useCallback(
-    (index: number) => {
+    async (index: number) => {
+      const closing = openFiles[index];
+
+      // Closing is the one irreversible thing the editor does to unsaved work.
+      if (closing && closing.content !== closing.savedContent) {
+        const confirmed = await confirm(
+          `${closing.name} has unsaved changes. Closing will discard them.`,
+          { title: "Discard changes?", kind: "warning" },
+        );
+        if (!confirmed) {
+          return;
+        }
+      }
+
       setOpenFiles((previous) => {
         const newFiles = previous.filter((_, i) => i !== index);
         if (newFiles.length === 0) {
@@ -355,7 +371,7 @@ function App() {
         return newFiles;
       });
     },
-    [activeFileIndex],
+    [activeFileIndex, openFiles],
   );
 
   const switchTab = useCallback(
@@ -371,7 +387,7 @@ function App() {
 
   const closeCurrentTab = useCallback(() => {
     if (activeFileIndex >= 0 && activeFileIndex < openFiles.length) {
-      closeTab(activeFileIndex);
+      void closeTab(activeFileIndex);
     }
   }, [activeFileIndex, openFiles, closeTab]);
 
@@ -389,11 +405,62 @@ function App() {
     }
   }, [activeFileIndex, openFiles, switchTab]);
 
+  const editContent = useCallback(
+    (value: string) => {
+      setOpenFiles((previous) =>
+        previous.map((file, index) =>
+          index === activeFileIndex ? { ...file, content: value } : file,
+        ),
+      );
+    },
+    [activeFileIndex],
+  );
+
+  const saveFile = useCallback(async () => {
+    const file = openFiles[activeFileIndex];
+    if (!file || file.content === file.savedContent) {
+      return;
+    }
+
+    try {
+      await invoke("write_markdown_file", {
+        path: file.path,
+        content: file.content,
+      });
+
+      setOpenFiles((previous) =>
+        previous.map((item, index) =>
+          index === activeFileIndex
+            ? { ...item, savedContent: item.content }
+            : item,
+        ),
+      );
+      setStatus(`Saved ${file.name}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatus(message);
+    }
+  }, [activeFileIndex, openFiles]);
+
   const reloadFile = useCallback(async () => {
     if (!currentFile || isLoading) {
       return;
     }
 
+    // Reloading throws away edits, so it has to ask first.
+    if (currentFile.content !== currentFile.savedContent) {
+      const confirmed = await confirm(
+        `${currentFile.name} has unsaved changes. Reloading will discard them.`,
+        { title: "Discard changes?", kind: "warning" },
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    setOpenFiles((previous) =>
+      previous.filter((file) => file.path !== currentFile.path),
+    );
     await loadFile(currentFile.path);
   }, [currentFile, isLoading, loadFile]);
 
@@ -436,6 +503,11 @@ function App() {
       }
 
       const key = event.key.toLowerCase();
+      if (key === "s") {
+        event.preventDefault();
+        void saveFile();
+      }
+
       if (key === "w") {
         event.preventDefault();
         closeCurrentTab();
@@ -493,7 +565,7 @@ function App() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [resetZoom, zoomIn, zoomOut, closeCurrentTab, nextTab, previousTab]);
+  }, [resetZoom, zoomIn, zoomOut, saveFile, closeCurrentTab, nextTab, previousTab]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -525,6 +597,12 @@ function App() {
       unlisteners.push(handler);
     });
 
+    void listen("menu-save-file", () => {
+      void saveFile();
+    }).then((handler) => {
+      unlisteners.push(handler);
+    });
+
     void listen("menu-reload-file", () => {
       void reloadFile();
     }).then((handler) => {
@@ -548,7 +626,7 @@ function App() {
         unlisten();
       }
     };
-  }, [openFile, reloadFile, closeCurrentTab]);
+  }, [openFile, saveFile, reloadFile, closeCurrentTab]);
 
   const resolveMarkdownAsset = useCallback(
     (src: string | undefined) => {
@@ -579,24 +657,89 @@ function App() {
     return `${lines.toLocaleString()} lines`;
   }, [currentFile]);
 
-  // Only the preview is normalized; the source view still shows the file as it
-  // was written on disk.
+  /**
+   * The text the preview is built from, held one step behind the editor.
+   *
+   * Typing updates the document immediately, because anything else feels
+   * broken. Rebuilding the preview is the expensive half — KaTeX relays every
+   * formula in the file — so it waits for a pause instead of running per
+   * keystroke.
+   */
+  const [debouncedContent, setDebouncedContent] = useState("");
+
+  useEffect(() => {
+    if (!currentFile) {
+      setDebouncedContent("");
+      return;
+    }
+
+    // Switching tabs should not show the previous file for 200ms.
+    if (debouncedContent === "") {
+      setDebouncedContent(currentFile.content);
+      return;
+    }
+
+    const timer = setTimeout(
+      () => setDebouncedContent(currentFile.content),
+      PREVIEW_DEBOUNCE_MS,
+    );
+
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentFile?.content, currentFile?.path]);
+
+  useEffect(() => {
+    setDebouncedContent(currentFile?.content ?? "");
+  }, [currentFile?.path]);
+
+  /**
+   * Quitting is the other way unsaved work disappears, and the window can be
+   * closed without touching a tab at all — so the close request is intercepted
+   * and only allowed through once the reader has said so.
+   */
+  useEffect(() => {
+    const unsaved = openFiles.filter(
+      (file) => file.content !== file.savedContent,
+    );
+
+    let unlisten: (() => void) | undefined;
+
+    void getCurrentWindow()
+      .onCloseRequested(async (event) => {
+        if (unsaved.length === 0) {
+          return;
+        }
+
+        event.preventDefault();
+
+        const names = unsaved.map((file) => file.name).join(", ");
+        const confirmed = await confirm(
+          `Unsaved changes in ${names}. Quitting will discard them.`,
+          { title: "Discard changes?", kind: "warning" },
+        );
+
+        if (confirmed) {
+          await getCurrentWindow().destroy();
+        }
+      })
+      .then((handler) => {
+        unlisten = handler;
+      });
+
+    return () => {
+      unlisten?.();
+    };
+  }, [openFiles]);
+
+  // Only the preview is normalized; the editor shows the file as written.
   const previewSource = useMemo(
-    () => (currentFile ? normalizeTexDelimiters(currentFile.content) : ""),
-    [currentFile],
+    () => normalizeTexDelimiters(debouncedContent),
+    [debouncedContent],
   );
 
-  const highlightedSource = useMemo(() => {
-    if (!currentFile) {
-      return "";
-    }
-
-    try {
-      return hljs.highlight(currentFile.content, { language: "markdown" }).value;
-    } catch {
-      return hljs.highlightAuto(currentFile.content).value;
-    }
-  }, [currentFile]);
+  const isDirty = currentFile
+    ? currentFile.content !== currentFile.savedContent
+    : false;
 
   const readerStyle = useMemo(
     () =>
@@ -766,6 +909,11 @@ function App() {
                 onClick={() => switchTab(index)}
               >
                 <span className="tab-name">{file.name}</span>
+                {file.content !== file.savedContent ? (
+                  <span className="tab-dirty" aria-label="Unsaved changes">
+                    ●
+                  </span>
+                ) : null}
               </button>
               <button
                 className="tab-close"
@@ -773,7 +921,7 @@ function App() {
                 title="Close tab (Command+W)"
                 onClick={(e) => {
                   e.stopPropagation();
-                  closeTab(index);
+                  void closeTab(index);
                 }}
               >
                 <X size={14} strokeWidth={2.2} aria-hidden="true" />
@@ -795,13 +943,12 @@ function App() {
         {currentFile ? (
           <>
             {mode === "source" || mode === "split" ? (
-              <section className="source-panel" aria-label="Markdown source">
-                <pre className="source-code" tabIndex={0}>
-                  <code
-                    className="hljs language-markdown"
-                    dangerouslySetInnerHTML={{ __html: highlightedSource }}
-                  />
-                </pre>
+              <section className="source-panel" aria-label="Markdown editor">
+                <Editor
+                  value={currentFile.content}
+                  onChange={editContent}
+                  themeKey={`${sourceTheme}-${theme}`}
+                />
               </section>
             ) : null}
 
@@ -890,7 +1037,12 @@ function App() {
 
       <footer className="status-bar">
         <span>{status}</span>
-        {fileStats ? <span>{fileStats}</span> : null}
+        <span className="status-right">
+          {isDirty ? (
+            <span className="status-dirty">Unsaved — Command+S</span>
+          ) : null}
+          {fileStats ? <span>{fileStats}</span> : null}
+        </span>
       </footer>
     </div>
   );

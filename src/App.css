@@ -1589,3 +1589,40 @@ button:focus-visible,
 .mermaid-error pre {
   margin: 0;
 }
+
+/* --- Editor --- */
+
+.editor-host {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--source-bg);
+}
+
+.editor-host .cm-editor {
+  height: 100%;
+}
+
+.editor-host .cm-scroller {
+  /* CodeMirror scrolls itself; the panel must not add a second scrollbar. */
+  overflow: auto;
+  padding: 0 32px;
+}
+
+.tab-dirty {
+  margin-left: 6px;
+  color: var(--accent-strong);
+  font-size: 0.7em;
+  line-height: 1;
+}
+
+.status-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.status-dirty {
+  color: var(--accent-strong);
+  font-weight: 600;
+}

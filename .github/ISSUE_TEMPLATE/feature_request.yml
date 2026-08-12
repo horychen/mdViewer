@@ -25,8 +25,8 @@ body:
     attributes:
       label: Scope check
       description: >
-        mdViewer is deliberately a reader. Editing, syncing, note management,
-        and accounts are out of scope.
+        mdViewer reads and edits single files. Syncing, note libraries, and
+        accounts are out of scope.
       options:
-        - label: This is a reading feature, not an editing or sync feature.
+        - label: This is a reading or editing feature, not sync or a note library.
           required: true

@@ -10,6 +10,7 @@ type PendingOpenedFiles = Mutex<Vec<String>>;
 type RecentFilesMenu = Mutex<Option<Submenu<tauri::Wry>>>;
 
 const MENU_OPEN_FILE_ID: &str = "open-file";
+const MENU_SAVE_FILE_ID: &str = "save-file";
 const MENU_RELOAD_FILE_ID: &str = "reload-file";
 const MENU_CLOSE_TAB_ID: &str = "close-tab";
 const MENU_RECENT_EMPTY_ID: &str = "recent-files-empty";
@@ -53,6 +54,39 @@ fn read_markdown_file(path: String) -> Result<MarkdownFile, String> {
         dir,
         content,
     })
+}
+
+/// Writes the editor's buffer back to the file it came from.
+///
+/// The write goes to a temporary file in the same directory and is then renamed
+/// over the original. A rename within one filesystem is atomic, so an
+/// interruption leaves the previous version intact rather than a half-written
+/// file — this is somebody's document, and it may well be the only copy.
+#[tauri::command]
+fn write_markdown_file(path: String, content: String) -> Result<(), String> {
+    let target = PathBuf::from(&path);
+
+    let directory = target
+        .parent()
+        .ok_or_else(|| "Refusing to write a path with no parent directory".to_string())?;
+
+    let file_name = target
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| "Refusing to write a path with no file name".to_string())?;
+
+    let temporary = directory.join(format!(".{file_name}.mdview-tmp"));
+
+    fs::write(&temporary, content.as_bytes())
+        .map_err(|error| format!("Could not write the file: {error}"))?;
+
+    fs::rename(&temporary, &target).map_err(|error| {
+        // Leaving the temporary file behind would be its own small mess.
+        let _ = fs::remove_file(&temporary);
+        format!("Could not replace the file: {error}")
+    })?;
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -192,6 +226,14 @@ pub fn run() {
                                 Some("CmdOrCtrl+O"),
                             )?,
                             &recent_submenu,
+                            &PredefinedMenuItem::separator(app_handle)?,
+                            &MenuItem::with_id(
+                                app_handle,
+                                MENU_SAVE_FILE_ID,
+                                "Save",
+                                true,
+                                Some("CmdOrCtrl+S"),
+                            )?,
                             &MenuItem::with_id(
                                 app_handle,
                                 MENU_RELOAD_FILE_ID,
@@ -250,6 +292,10 @@ pub fn run() {
                 let _ = app_handle.emit("menu-open-file", ());
             }
 
+            if event.id() == MENU_SAVE_FILE_ID {
+                let _ = app_handle.emit("menu-save-file", ());
+            }
+
             if event.id() == MENU_RELOAD_FILE_ID {
                 let _ = app_handle.emit("menu-reload-file", ());
             }
@@ -291,6 +337,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             read_markdown_file,
+            write_markdown_file,
             take_pending_opened_files,
             set_recent_files
         ])
