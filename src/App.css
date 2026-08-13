@@ -1626,3 +1626,9 @@ button:focus-visible,
   color: var(--accent-strong);
   font-weight: 600;
 }
+
+.empty-state-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}

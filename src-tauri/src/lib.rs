@@ -10,6 +10,7 @@ type PendingOpenedFiles = Mutex<Vec<String>>;
 type RecentFilesMenu = Mutex<Option<Submenu<tauri::Wry>>>;
 
 const MENU_OPEN_FILE_ID: &str = "open-file";
+const MENU_NEW_FILE_ID: &str = "new-file";
 const MENU_SAVE_FILE_ID: &str = "save-file";
 const MENU_RELOAD_FILE_ID: &str = "reload-file";
 const MENU_CLOSE_TAB_ID: &str = "close-tab";
@@ -220,6 +221,13 @@ pub fn run() {
                         &[
                             &MenuItem::with_id(
                                 app_handle,
+                                MENU_NEW_FILE_ID,
+                                "New",
+                                true,
+                                Some("CmdOrCtrl+N"),
+                            )?,
+                            &MenuItem::with_id(
+                                app_handle,
                                 MENU_OPEN_FILE_ID,
                                 "Open...",
                                 true,
@@ -290,6 +298,10 @@ pub fn run() {
         .on_menu_event(|app_handle, event| {
             if event.id() == MENU_OPEN_FILE_ID {
                 let _ = app_handle.emit("menu-open-file", ());
+            }
+
+            if event.id() == MENU_NEW_FILE_ID {
+                let _ = app_handle.emit("menu-new-file", ());
             }
 
             if event.id() == MENU_SAVE_FILE_ID {

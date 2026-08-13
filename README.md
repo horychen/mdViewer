@@ -60,14 +60,18 @@ Open `sample-math.md` to see all of the above at once.
 
 ## Editing
 
-`Command+2` puts the editor beside the preview; `Command+3` gives it the whole
-window. Both use CodeMirror, with Markdown highlighting and the same five
+`Command+N` opens an empty document; `Command+2` puts the editor beside the
+preview and `Command+3` gives it the whole window. Both use CodeMirror, with Markdown highlighting and the same five
 palettes the preview's code blocks use, so the editor is not a sixth colour
 scheme that agrees with none of the others.
 
 Typing updates the document immediately and the preview follows a fifth of a
 second later. Relaying every formula in a file on each keystroke is the
 expensive half, and waiting for a pause is what keeps typing from stuttering.
+
+A new document has no file behind it until you save: asking where to put it
+first would interrupt the thought that prompted `Command+N`, so the location is
+chosen at the first `Command+S`.
 
 **Saving is explicit.** `Command+S` writes the file; until then a dot marks the
 tab and the status bar says so, and closing a tab, reloading, or quitting asks
@@ -83,6 +87,7 @@ intact rather than half a document.
 
 | Key | Action |
 | --- | --- |
+| `Command+N` | New document |
 | `Command+O` | Open a file |
 | `Command+S` | Save |
 | `Command+R` | Reload the current file |

@@ -3,7 +3,7 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { homeDir } from "@tauri-apps/api/path";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { confirm, open } from "@tauri-apps/plugin-dialog";
+import { confirm, open, save } from "@tauri-apps/plugin-dialog";
 import {
   Clock,
   Code2,
@@ -416,26 +416,82 @@ function App() {
     [activeFileIndex],
   );
 
+  /**
+   * Opens an empty tab that has no file behind it yet.
+   *
+   * Asking where to put it first would interrupt the thought that prompted
+   * Command+N. The location is chosen at the first save instead, which is how
+   * every other editor on the machine behaves.
+   */
+  const newFile = useCallback(() => {
+    setOpenFiles((previous) => {
+      const untitled: MarkdownFile = {
+        path: "",
+        name: "Untitled.md",
+        dir: "",
+        content: "",
+        savedContent: "",
+      };
+
+      setActiveFileIndex(previous.length);
+      setStatus("New document — Command+S to choose where it lives.");
+      document.title = "Untitled.md - mdViewer";
+      return [...previous, untitled];
+    });
+
+    // A new document is for writing in, so start where the writing happens.
+    setMode((previousMode) => (previousMode === "preview" ? "split" : previousMode));
+  }, []);
+
   const saveFile = useCallback(async () => {
     const file = openFiles[activeFileIndex];
-    if (!file || file.content === file.savedContent) {
+    if (!file) {
       return;
     }
 
-    try {
-      await invoke("write_markdown_file", {
-        path: file.path,
-        content: file.content,
+    // An untitled document always needs a destination; a saved one only needs
+    // writing when it has actually changed.
+    const needsLocation = file.path === "";
+    if (!needsLocation && file.content === file.savedContent) {
+      return;
+    }
+
+    let path = file.path;
+    let name = file.name;
+    let dir = file.dir;
+
+    if (needsLocation) {
+      const chosen = await save({
+        defaultPath: "Untitled.md",
+        filters: MARKDOWN_FILTERS,
       });
+
+      if (!chosen) {
+        return;
+      }
+
+      path = chosen;
+      name = chosen.split("/").pop() ?? "Untitled.md";
+      dir = chosen.slice(0, Math.max(0, chosen.length - name.length - 1));
+    }
+
+    try {
+      await invoke("write_markdown_file", { path, content: file.content });
 
       setOpenFiles((previous) =>
         previous.map((item, index) =>
           index === activeFileIndex
-            ? { ...item, savedContent: item.content }
+            ? { ...item, path, name, dir, savedContent: item.content }
             : item,
         ),
       );
-      setStatus(`Saved ${file.name}`);
+
+      if (needsLocation) {
+        setRecentFiles((previous) => addRecentFile(previous, { path, name, dir }));
+        document.title = `${name} - mdViewer`;
+      }
+
+      setStatus(`Saved ${name}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setStatus(message);
@@ -503,6 +559,11 @@ function App() {
       }
 
       const key = event.key.toLowerCase();
+      if (key === "n") {
+        event.preventDefault();
+        newFile();
+      }
+
       if (key === "s") {
         event.preventDefault();
         void saveFile();
@@ -565,7 +626,7 @@ function App() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [resetZoom, zoomIn, zoomOut, saveFile, closeCurrentTab, nextTab, previousTab]);
+  }, [resetZoom, zoomIn, zoomOut, newFile, saveFile, closeCurrentTab, nextTab, previousTab]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -593,6 +654,12 @@ function App() {
 
     void listen("menu-open-file", () => {
       void openFile();
+    }).then((handler) => {
+      unlisteners.push(handler);
+    });
+
+    void listen("menu-new-file", () => {
+      newFile();
     }).then((handler) => {
       unlisteners.push(handler);
     });
@@ -626,7 +693,7 @@ function App() {
         unlisten();
       }
     };
-  }, [openFile, saveFile, reloadFile, closeCurrentTab]);
+  }, [openFile, newFile, saveFile, reloadFile, closeCurrentTab]);
 
   const resolveMarkdownAsset = useCallback(
     (src: string | undefined) => {
@@ -998,7 +1065,20 @@ function App() {
         ) : (
           <section className="empty-state" aria-label="No document open">
             <FileText size={32} strokeWidth={1.6} aria-hidden="true" />
-            <p>Use File &gt; Open... or Command+O to start reading.</p>
+            <p>Command+N for a new document, Command+O to open one.</p>
+            <div className="empty-state-actions">
+              <button className="icon-button" type="button" onClick={newFile}>
+                <Plus size={16} strokeWidth={2} aria-hidden="true" />
+                <span>New</span>
+              </button>
+              <button
+                className="icon-button"
+                type="button"
+                onClick={() => void openFile()}
+              >
+                <span>Open...</span>
+              </button>
+            </div>
 
             {recentFiles.length ? (
               <nav className="recent-files" aria-label="Recent files">
