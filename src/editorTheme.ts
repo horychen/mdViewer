@@ -59,6 +59,28 @@ export function buildEditorTheme(): Extension {
         { backgroundColor: selection },
       "&.cm-focused": { outline: "none" },
       ".cm-cursor, .cm-dropCursor": { borderLeftColor: accent },
+      // The search panel is part of the editor, so it takes the editor's colours
+      // rather than CodeMirror's defaults, which match no theme here.
+      ".cm-panels": {
+        color: foreground,
+        backgroundColor: background,
+        borderBottom: `1px solid ${comment}`,
+      },
+      ".cm-panel.cm-search": { padding: "8px 10px", fontFamily: "var(--mono-font)" },
+      ".cm-panel.cm-search input, .cm-panel.cm-search button": {
+        color: foreground,
+        backgroundColor: background,
+        border: `1px solid ${comment}`,
+        borderRadius: "5px",
+        padding: "3px 7px",
+        font: "inherit",
+      },
+      ".cm-panel.cm-search label": { color: comment },
+      ".cm-searchMatch": { backgroundColor: selection, borderRadius: "3px" },
+      ".cm-searchMatch-selected": {
+        backgroundColor: accent,
+        color: background,
+      },
     },
     // Whether the theme is dark decides CodeMirror's own built-in contrasts.
     { dark: isDark(background) },

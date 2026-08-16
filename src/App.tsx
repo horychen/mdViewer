@@ -1,4 +1,11 @@
-import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { homeDir } from "@tauri-apps/api/path";
@@ -100,7 +107,9 @@ const SOURCE_THEMES: { id: SourceTheme; label: string }[] = [
 
 const DEFAULT_READER_ZOOM = 1;
 const MIN_READER_ZOOM = 0.4;
-const MAX_READER_ZOOM = 1.8;
+// Raised for diagrams: a dense flowchart needs magnifying well past the point
+// where prose stops being comfortable.
+const MAX_READER_ZOOM = 3;
 const READER_ZOOM_STEP = 0.1;
 
 function getInitialTheme(): Theme {
@@ -231,6 +240,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [recentFiles, setRecentFiles] = useState<RecentFile[]>(loadRecentFiles);
   const [homePath, setHomePath] = useState<string | null>(null);
+  const [searchRequest, setSearchRequest] = useState(0);
 
   // Derived current file
   const currentFile =
@@ -284,16 +294,6 @@ function App() {
     setStatus("Loading...");
 
     try {
-      // Check if file is already open
-      const existingIndex = openFiles.findIndex((f) => f.path === path);
-      if (existingIndex >= 0) {
-        setActiveFileIndex(existingIndex);
-        setStatus(`Switched to ${openFiles[existingIndex].name}`);
-        document.title = `${openFiles[existingIndex].name} - mdViewer`;
-        setIsLoading(false);
-        return;
-      }
-
       const file = await invoke<MarkdownFile>("read_markdown_file", { path });
       setRecentFiles((previous) =>
         addRecentFile(previous, {
@@ -302,14 +302,27 @@ function App() {
           dir: file.dir,
         }),
       );
+
+      // The already-open check has to read the current list, not one captured
+      // when this callback was created. Two loads of the same path can land in
+      // one tick, and from a stale copy both would conclude the file is new and
+      // append a tab of their own.
       setOpenFiles((previous) => {
-        const newFiles = [...previous, { ...file, savedContent: file.content }];
-        // Set active index to the new file
-        const newIndex = newFiles.length - 1;
-        setActiveFileIndex(newIndex);
+        const existingIndex = previous.findIndex(
+          (item) => item.path === file.path,
+        );
+
+        if (existingIndex >= 0) {
+          setActiveFileIndex(existingIndex);
+          setStatus(`Switched to ${file.name}`);
+          document.title = `${file.name} - mdViewer`;
+          return previous;
+        }
+
+        setActiveFileIndex(previous.length);
         setStatus(`Loaded ${file.name}`);
         document.title = `${file.name} - mdViewer`;
-        return newFiles;
+        return [...previous, { ...file, savedContent: file.content }];
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -319,7 +332,9 @@ function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [openFiles]);
+    // No dependency on `openFiles`: this callback must stay stable, or every
+    // effect that lists it re-subscribes on each keystroke.
+  }, []);
 
   const openFile = useCallback(async () => {
     const selected = await open({
@@ -423,6 +438,19 @@ function App() {
    * Command+N. The location is chosen at the first save instead, which is how
    * every other editor on the machine behaves.
    */
+  /**
+   * Opens the editor's search panel.
+   *
+   * Searching happens in the source, because that is where a match can be
+   * corrected and where CodeMirror already provides find, replace, and match
+   * highlighting. Asked for from preview-only mode, the editor is brought into
+   * view first — a search whose results are invisible would be no search.
+   */
+  const requestSearch = useCallback(() => {
+    setMode((previousMode) => (previousMode === "preview" ? "split" : previousMode));
+    setSearchRequest((previous) => previous + 1);
+  }, []);
+
   const newFile = useCallback(() => {
     setOpenFiles((previous) => {
       const untitled: MarkdownFile = {
@@ -536,6 +564,49 @@ function App() {
     setReaderZoom(DEFAULT_READER_ZOOM);
   }, []);
 
+  /**
+   * Pinching the trackpad zooms the reading area.
+   *
+   * macOS reports a pinch as a wheel event with `ctrlKey` set — there is no
+   * separate gesture event to listen for in a WebView. The default must be
+   * prevented, or the page zooms underneath us and the toolbar grows with the
+   * text. Registered non-passive for the same reason.
+   */
+  useEffect(() => {
+    // A trackpad emits wheel events far faster than a large document can be
+    // laid out. Accumulating them and applying once per frame keeps the pinch
+    // smooth instead of queueing a reflow behind every notch.
+    let pending = 0;
+    let frame = 0;
+
+    const apply = () => {
+      frame = 0;
+      const delta = pending;
+      pending = 0;
+      setReaderZoom((previous) =>
+        roundReaderZoom(clampReaderZoom(previous * (1 - delta / 100))),
+      );
+    };
+
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey) {
+        return;
+      }
+
+      event.preventDefault();
+      pending += event.deltaY;
+      frame ||= requestAnimationFrame(apply);
+    };
+
+    window.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      window.removeEventListener("wheel", onWheel);
+      if (frame) {
+        cancelAnimationFrame(frame);
+      }
+    };
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const hasCommandModifier = event.metaKey || event.ctrlKey;
@@ -559,6 +630,11 @@ function App() {
       }
 
       const key = event.key.toLowerCase();
+      if (key === "f") {
+        event.preventDefault();
+        requestSearch();
+      }
+
       if (key === "n") {
         event.preventDefault();
         newFile();
@@ -626,13 +702,24 @@ function App() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [resetZoom, zoomIn, zoomOut, newFile, saveFile, closeCurrentTab, nextTab, previousTab]);
+  }, [
+    resetZoom,
+    zoomIn,
+    zoomOut,
+    requestSearch,
+    newFile,
+    saveFile,
+    closeCurrentTab,
+    nextTab,
+    previousTab,
+  ]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    let cancelled = false;
 
     void invoke<string[]>("take_pending_opened_files").then((paths) => {
-      // Load all pending files
+      // Files macOS handed us before the window existed.
       for (const path of paths) {
         void loadFile(path);
       }
@@ -643,57 +730,83 @@ function App() {
         void loadFile(path);
       }
     }).then((handler) => {
+      // `listen` resolves after the effect may already have been cleaned up.
+      // Without this check the handle arrives too late to be used, the
+      // subscription is never dropped, and every re-run leaves another live
+      // listener behind — one open then produces one tab per leaked listener.
+      if (cancelled) {
+        handler();
+        return;
+      }
       unlisten = handler;
     });
 
-    return () => unlisten?.();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
   }, [loadFile]);
+
+  /**
+   * The menu commands, reached through a ref rather than closed over.
+   *
+   * These handlers change whenever the document does — `saveFile` needs the
+   * current text. Listing them as dependencies re-subscribed the menu on every
+   * keystroke, and since `listen` resolves asynchronously, most of those
+   * subscriptions were never dropped. Registering once and reading the latest
+   * handler from a ref keeps the subscription count at one apiece.
+   */
+  const menuActionsRef = useRef({
+    openFile,
+    requestSearch,
+    newFile,
+    saveFile,
+    reloadFile,
+    closeCurrentTab,
+  });
+
+  menuActionsRef.current = {
+    openFile,
+    requestSearch,
+    newFile,
+    saveFile,
+    reloadFile,
+    closeCurrentTab,
+  };
 
   useEffect(() => {
     const unlisteners: Array<() => void> = [];
+    let cancelled = false;
 
-    void listen("menu-open-file", () => {
-      void openFile();
-    }).then((handler) => {
+    const collect = (handler: () => void) => {
+      if (cancelled) {
+        handler();
+        return;
+      }
       unlisteners.push(handler);
-    });
+    };
 
-    void listen("menu-new-file", () => {
-      newFile();
-    }).then((handler) => {
-      unlisteners.push(handler);
-    });
+    const subscriptions: [string, () => void][] = [
+      ["menu-open-file", () => void menuActionsRef.current.openFile()],
+      ["menu-find", () => menuActionsRef.current.requestSearch()],
+      ["menu-new-file", () => menuActionsRef.current.newFile()],
+      ["menu-save-file", () => void menuActionsRef.current.saveFile()],
+      ["menu-reload-file", () => void menuActionsRef.current.reloadFile()],
+      ["menu-close-tab", () => menuActionsRef.current.closeCurrentTab()],
+      ["menu-clear-recent-files", () => setRecentFiles([])],
+    ];
 
-    void listen("menu-save-file", () => {
-      void saveFile();
-    }).then((handler) => {
-      unlisteners.push(handler);
-    });
-
-    void listen("menu-reload-file", () => {
-      void reloadFile();
-    }).then((handler) => {
-      unlisteners.push(handler);
-    });
-
-    void listen("menu-close-tab", () => {
-      closeCurrentTab();
-    }).then((handler) => {
-      unlisteners.push(handler);
-    });
-
-    void listen("menu-clear-recent-files", () => {
-      setRecentFiles([]);
-    }).then((handler) => {
-      unlisteners.push(handler);
-    });
+    for (const [event, action] of subscriptions) {
+      void listen(event, action).then(collect);
+    }
 
     return () => {
+      cancelled = true;
       for (const unlisten of unlisteners) {
         unlisten();
       }
     };
-  }, [openFile, newFile, saveFile, reloadFile, closeCurrentTab]);
+  }, []);
 
   const resolveMarkdownAsset = useCallback(
     (src: string | undefined) => {
@@ -764,15 +877,21 @@ function App() {
    * closed without touching a tab at all — so the close request is intercepted
    * and only allowed through once the reader has said so.
    */
-  useEffect(() => {
-    const unsaved = openFiles.filter(
-      (file) => file.content !== file.savedContent,
-    );
+  // Read at close time rather than captured, so this subscription can be made
+  // once instead of on every edit — the same leak the menu listeners had.
+  const openFilesRef = useRef(openFiles);
+  openFilesRef.current = openFiles;
 
+  useEffect(() => {
     let unlisten: (() => void) | undefined;
+    let cancelled = false;
 
     void getCurrentWindow()
       .onCloseRequested(async (event) => {
+        const unsaved = openFilesRef.current.filter(
+          (file) => file.content !== file.savedContent,
+        );
+
         if (unsaved.length === 0) {
           return;
         }
@@ -790,13 +909,18 @@ function App() {
         }
       })
       .then((handler) => {
+        if (cancelled) {
+          handler();
+          return;
+        }
         unlisten = handler;
       });
 
     return () => {
+      cancelled = true;
       unlisten?.();
     };
-  }, [openFiles]);
+  }, []);
 
   // Only the preview is normalized; the editor shows the file as written.
   const previewSource = useMemo(
@@ -807,6 +931,56 @@ function App() {
   const isDirty = currentFile
     ? currentFile.content !== currentFile.savedContent
     : false;
+
+  /**
+   * The rendered document, rebuilt only when the document itself changes.
+   *
+   * Zoom is a CSS variable, but without this the whole tree re-rendered on
+   * every wheel notch — parsing the Markdown again, laying out every formula
+   * again, and stalling a long document mid-pinch. Notably `readerZoom` is not
+   * a dependency here: it changes how this looks, never what it is.
+   */
+  const renderedPreview = useMemo(
+    () => (
+      <ReactMarkdown
+        remarkPlugins={REMARK_PLUGINS}
+        rehypePlugins={REHYPE_PLUGINS as never}
+        components={{
+          code({ className, children, ...props }) {
+            // Mermaid arrives as a fenced block; everything else stays on the
+            // normal highlighted-code path.
+            if (/\blanguage-mermaid\b/.test(className ?? "")) {
+              return (
+                <Mermaid
+                  code={String(children).replace(/\n$/, "")}
+                  theme={theme}
+                />
+              );
+            }
+
+            return (
+              <code className={className} {...props}>
+                {children}
+              </code>
+            );
+          },
+          img({ alt, src, ...props }) {
+            return (
+              <img
+                {...props}
+                alt={alt ?? ""}
+                loading="lazy"
+                src={resolveMarkdownAsset(src)}
+              />
+            );
+          },
+        }}
+      >
+        {previewSource}
+      </ReactMarkdown>
+    ),
+    [previewSource, theme, resolveMarkdownAsset],
+  );
 
   const readerStyle = useMemo(
     () =>
@@ -1015,6 +1189,7 @@ function App() {
                   value={currentFile.content}
                   onChange={editContent}
                   themeKey={`${sourceTheme}-${theme}`}
+                  searchRequest={searchRequest}
                 />
               </section>
             ) : null}
@@ -1022,42 +1197,7 @@ function App() {
             {mode === "preview" || mode === "split" ? (
               <section className="preview-panel" aria-label="Markdown preview">
                 <article className="markdown-body">
-                  <ReactMarkdown
-                    remarkPlugins={REMARK_PLUGINS}
-                    rehypePlugins={REHYPE_PLUGINS as never}
-                    components={{
-                      code({ className, children, ...props }) {
-                        // Mermaid arrives as a fenced block; everything else
-                        // stays on the normal highlighted-code path.
-                        if (/\blanguage-mermaid\b/.test(className ?? "")) {
-                          return (
-                            <Mermaid
-                              code={String(children).replace(/\n$/, "")}
-                              theme={theme}
-                            />
-                          );
-                        }
-
-                        return (
-                          <code className={className} {...props}>
-                            {children}
-                          </code>
-                        );
-                      },
-                      img({ alt, src, ...props }) {
-                        return (
-                          <img
-                            {...props}
-                            alt={alt ?? ""}
-                            loading="lazy"
-                            src={resolveMarkdownAsset(src)}
-                          />
-                        );
-                      },
-                    }}
-                  >
-                    {previewSource}
-                  </ReactMarkdown>
+                  {renderedPreview}
                 </article>
               </section>
             ) : null}

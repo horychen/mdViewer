@@ -13,6 +13,7 @@ const MENU_OPEN_FILE_ID: &str = "open-file";
 const MENU_NEW_FILE_ID: &str = "new-file";
 const MENU_SAVE_FILE_ID: &str = "save-file";
 const MENU_RELOAD_FILE_ID: &str = "reload-file";
+const MENU_FIND_ID: &str = "find";
 const MENU_CLOSE_TAB_ID: &str = "close-tab";
 const MENU_RECENT_EMPTY_ID: &str = "recent-files-empty";
 const MENU_CLEAR_RECENT_ID: &str = "clear-recent-files";
@@ -251,6 +252,13 @@ pub fn run() {
                             )?,
                             &MenuItem::with_id(
                                 app_handle,
+                                MENU_FIND_ID,
+                                "Find...",
+                                true,
+                                Some("CmdOrCtrl+F"),
+                            )?,
+                            &MenuItem::with_id(
+                                app_handle,
                                 MENU_CLOSE_TAB_ID,
                                 "Close Tab",
                                 true,
@@ -310,6 +318,10 @@ pub fn run() {
 
             if event.id() == MENU_RELOAD_FILE_ID {
                 let _ = app_handle.emit("menu-reload-file", ());
+            }
+
+            if event.id() == MENU_FIND_ID {
+                let _ = app_handle.emit("menu-find", ());
             }
 
             if event.id() == MENU_CLOSE_TAB_ID {

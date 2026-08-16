@@ -36,10 +36,26 @@ export function Mermaid({ code, theme }: MermaidProps) {
       try {
         const mermaid = (await import("mermaid")).default;
 
+        // `useMaxWidth` defaults on, which squeezes a diagram into the width of
+        // its container. A large flowchart then arrives unreadable, its labels
+        // shrunk to nothing. Off, each diagram is drawn at its own size and the
+        // figure scrolls sideways instead — detail survives, and scrolling is
+        // recoverable in a way lost detail is not.
+        const noStretch = { useMaxWidth: false };
+
         mermaid.initialize({
           startOnLoad: false,
           theme: theme === "dark" ? "dark" : "default",
           securityLevel: "strict",
+          flowchart: noStretch,
+          sequence: noStretch,
+          state: noStretch,
+          class: noStretch,
+          er: noStretch,
+          journey: noStretch,
+          gantt: noStretch,
+          pie: noStretch,
+          gitGraph: noStretch,
           // No `fontFamily: "inherit"` here. Mermaid sizes each node by
           // measuring its label, and it can only measure a real font — given
           // `inherit` it measures in its default face while the SVG renders in

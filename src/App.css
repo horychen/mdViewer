@@ -635,9 +635,12 @@ button:focus-visible,
 }
 
 .markdown-body {
-  width: min(calc(100% - 56px), 780px);
+  /* Follows the window. Typography would cap the line length here, but these
+     are documents of diagrams and wide tables, and a cap left half of a large
+     display unused. */
+  width: calc(100% - 96px);
   min-height: 100%;
-  margin: 0 auto 0 clamp(48px, 7vw, 112px);
+  margin: 0 auto;
   padding: 52px 0 88px;
   color: var(--text);
   background: transparent;
@@ -1547,11 +1550,15 @@ button:focus-visible,
 
 .mermaid-figure {
   margin: 1.4em 0;
+  /* The figure is as wide as its diagram, and the panel scrolls to reach the
+     rest. Prose keeps a short line length, so a diagram confined to the same
+     column would be cut off at its edge; deriving a wider figure from the
+     panel width was tried first and did not hold. */
+  width: max-content;
+  max-width: none;
 }
 
 .mermaid-canvas {
-  /* A wide diagram scrolls on its own rather than stretching the page. */
-  overflow-x: auto;
   text-align: center;
   /* SVG text inherits typography from the page, and Mermaid has already sized
      every box against its own font. Letting the reading area's 21px and its
@@ -1568,8 +1575,9 @@ button:focus-visible,
   zoom: var(--reader-zoom);
 }
 
+/* No max-width: a diagram keeps its own size and the figure scrolls, rather
+   than being squeezed until its labels are illegible. */
 .mermaid-canvas svg {
-  max-width: 100%;
   height: auto;
 }
 

@@ -15,9 +15,19 @@ type EditorProps = {
   onChange: (value: string) => void;
   /** Rebuilds the theme when the reader picks a different palette. */
   themeKey: string;
+  /**
+   * Incremented to open the search panel from outside — Command+F is handled by
+   * the window, since it has to work whichever pane has focus.
+   */
+  searchRequest: number;
 };
 
-export function Editor({ value, onChange, themeKey }: EditorProps) {
+export function Editor({
+  value,
+  onChange,
+  themeKey,
+  searchRequest,
+}: EditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<{
     state: { doc: { toString(): string } };
@@ -38,14 +48,21 @@ export function Editor({ value, onChange, themeKey }: EditorProps) {
     }
 
     const build = async () => {
-      const [{ EditorView, keymap, lineNumbers, highlightActiveLine }, { EditorState }, { markdown }, { defaultKeymap, history, historyKeymap }, { buildEditorTheme }] =
-        await Promise.all([
-          import("@codemirror/view"),
-          import("@codemirror/state"),
-          import("@codemirror/lang-markdown"),
-          import("@codemirror/commands"),
-          import("./editorTheme"),
-        ]);
+      const [
+        { EditorView, keymap, lineNumbers, highlightActiveLine },
+        { EditorState },
+        { markdown },
+        { defaultKeymap, history, historyKeymap },
+        { search, searchKeymap },
+        { buildEditorTheme },
+      ] = await Promise.all([
+        import("@codemirror/view"),
+        import("@codemirror/state"),
+        import("@codemirror/lang-markdown"),
+        import("@codemirror/commands"),
+        import("@codemirror/search"),
+        import("./editorTheme"),
+      ]);
 
       if (cancelled) {
         return;
@@ -59,7 +76,8 @@ export function Editor({ value, onChange, themeKey }: EditorProps) {
             lineNumbers(),
             highlightActiveLine(),
             history(),
-            keymap.of([...defaultKeymap, ...historyKeymap]),
+            search({ top: true }),
+            keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
             markdown(),
             EditorView.lineWrapping,
             buildEditorTheme(),
@@ -85,6 +103,29 @@ export function Editor({ value, onChange, themeKey }: EditorProps) {
     // Rebuilt only when the palette changes; `value` is applied below instead.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [themeKey]);
+
+  useEffect(() => {
+    if (searchRequest === 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    // The panel is opened through CodeMirror's own command so its state, its
+    // keymap, and the highlighting of matches all stay consistent with what
+    // Command+F inside the editor would have done.
+    void import("@codemirror/search").then(({ openSearchPanel }) => {
+      const view = viewRef.current;
+      if (!cancelled && view) {
+        openSearchPanel(view as never);
+        (view as unknown as { focus(): void }).focus();
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [searchRequest]);
 
   // Reaching here means the document changed outside the editor — a reload, or
   // a switch to another tab. Typing does not, because the text already matches.
