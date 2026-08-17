@@ -1548,37 +1548,43 @@ button:focus-visible,
 
 /* --- Mermaid diagrams --- */
 
+/*
+ * A diagram gets its own window onto itself.
+ *
+ * Two halves have to hold at once, and picking one at a time is what went wrong
+ * repeatedly here. Shrinking the drawing to fit the column destroyed the labels.
+ * Widening the figure to the drawing pushed it past the document, which clipped
+ * it and left a band of unused space beside the text. So: the figure is exactly
+ * as wide as the space available, and the drawing keeps its own size and scrolls
+ * inside that box.
+ */
+
 .mermaid-figure {
   margin: 1.4em 0;
-  /* The figure is as wide as its diagram, and the panel scrolls to reach the
-     rest. Prose keeps a short line length, so a diagram confined to the same
-     column would be cut off at its edge; deriving a wider figure from the
-     panel width was tried first and did not hold. */
-  width: max-content;
-  max-width: none;
+  width: 100%;
 }
 
 .mermaid-canvas {
+  /* The scroll box. Never wider than the column, so it cannot overflow the
+     document; the diagram inside it can be any size. */
+  width: 100%;
+  max-width: 100%;
+  overflow: auto;
   text-align: center;
   /* SVG text inherits typography from the page, and Mermaid has already sized
-     every box against its own font. Letting the reading area's 21px and its
-     zoom factor through here would widen the labels past the boxes drawn for
-     them, clipping the text. */
+     every box against its own font. Letting the reading area's 21px through
+     here would widen the labels past the boxes drawn for them. */
   font-size: 16px;
   font-family:
     "trebuchet ms", ui-sans-serif, system-ui, -apple-system, sans-serif;
-  /* Diagrams still follow the reader's zoom, but as magnification rather than
-     as a larger font: `zoom` scales the finished box uniformly and takes part
-     in layout, where `transform: scale` would leave the old box behind and let
-     the next paragraph overlap. Nothing inside the SVG is laid out again, so
-     the labels cannot start overflowing again either. */
-  zoom: var(--reader-zoom);
 }
 
-/* No max-width: a diagram keeps its own size and the figure scrolls, rather
-   than being squeezed until its labels are illegible. */
 .mermaid-canvas svg {
+  /* No max-width: the drawing keeps its own size and the box above scrolls to
+     it. Zoom is applied here rather than on the scroll box, so the box stays a
+     plain unscaled viewport and its scroll extent tracks the zoomed drawing. */
   height: auto;
+  zoom: var(--reader-zoom);
 }
 
 .mermaid-error {
